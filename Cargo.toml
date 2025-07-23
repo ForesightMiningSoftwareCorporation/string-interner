@@ -67,7 +67,3 @@ test-allocations = []
 [badges]
 travis-ci = { repository = "Robbepop/string-interner" }
 appveyor = { repository = "Robbepop/string-interner", branch = "master", service = "github" }
-
-[package.metadata.fslabs.publish.cargo]
-publish = true
-alternate_registries = ["fslabs-nominal"]
