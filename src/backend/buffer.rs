@@ -321,7 +321,7 @@ where
     }
 }
 
-impl<'a, S> ExactSizeIterator for Iter<'a, S>
+impl<S> ExactSizeIterator for Iter<'_, S>
 where
     S: Symbol,
 {
