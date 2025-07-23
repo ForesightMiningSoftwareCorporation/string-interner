@@ -1,14 +1,6 @@
 use std::{
-    alloc::{
-        GlobalAlloc,
-        Layout,
-        System,
-    },
-    sync::atomic::{
-        AtomicBool,
-        AtomicUsize,
-        Ordering,
-    },
+    alloc::{GlobalAlloc, Layout, System},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 pub struct TracingAllocator {
@@ -17,6 +9,7 @@ pub struct TracingAllocator {
 }
 
 impl TracingAllocator {
+    #[allow(clippy::new_without_default)]
     pub const fn new() -> Self {
         Self {
             inner: System,
@@ -44,8 +37,7 @@ impl TracingAllocator {
 unsafe impl GlobalAlloc for TracingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         self.stats.push_allocations(layout);
-        let res = self.inner.alloc(layout);
-        res
+        self.inner.alloc(layout)
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
@@ -112,7 +104,7 @@ impl TracedStats {
     fn push_allocations(&self, layout: Layout) {
         let size = layout.size();
         if !self.is_active() || size == 0 {
-            return
+            return;
         }
         self.len_allocations.fetch_add(1, Ordering::SeqCst);
         self.current_memory_usage.fetch_add(size, Ordering::SeqCst);
@@ -122,7 +114,7 @@ impl TracedStats {
     fn push_deallocations(&self, layout: Layout) {
         let size = layout.size();
         if !self.is_active() || size == 0 {
-            return
+            return;
         }
         self.len_deallocations.fetch_add(1, Ordering::SeqCst);
         self.current_memory_usage.fetch_sub(size, Ordering::SeqCst);

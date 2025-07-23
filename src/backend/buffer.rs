@@ -1,17 +1,8 @@
 #![cfg(feature = "backends")]
 
 use super::Backend;
-use crate::{
-    compat::Vec,
-    symbol::expect_valid_symbol,
-    DefaultSymbol,
-    Symbol,
-};
-use core::{
-    marker::PhantomData,
-    mem,
-    str,
-};
+use crate::{compat::Vec, symbol::expect_valid_symbol, DefaultSymbol, Symbol};
+use core::{marker::PhantomData, mem, str};
 
 /// An interner backend that appends all interned string information in a single buffer.
 ///
@@ -207,7 +198,7 @@ fn encode_var_usize(buffer: &mut Vec<u8>, mut value: usize) -> usize {
     if value <= 0x7F {
         // Shortcut the common case for low value.
         buffer.push(value as u8);
-        return 1
+        return 1;
     }
     let mut len_chunks = 0;
     loop {
@@ -217,7 +208,7 @@ fn encode_var_usize(buffer: &mut Vec<u8>, mut value: usize) -> usize {
         buffer.push(chunk);
         len_chunks += 1;
         if value == 0 {
-            break
+            break;
         }
     }
     len_chunks
@@ -236,7 +227,7 @@ fn encode_var_usize(buffer: &mut Vec<u8>, mut value: usize) -> usize {
 unsafe fn decode_var_usize_unchecked(buffer: &[u8]) -> (usize, usize) {
     let first = unsafe { *buffer.get_unchecked(0) };
     if first <= 0x7F_u8 {
-        return (first as usize, 1)
+        return (first as usize, 1);
     }
     let mut result: usize = 0;
     let mut i = 0;
@@ -245,7 +236,7 @@ unsafe fn decode_var_usize_unchecked(buffer: &[u8]) -> (usize, usize) {
         let shifted = ((byte & 0x7F_u8) as usize) << ((i * 7) as u32);
         result += shifted;
         if (byte & 0x80) == 0 {
-            break
+            break;
         }
         i += 1;
     }
@@ -259,7 +250,7 @@ unsafe fn decode_var_usize_unchecked(buffer: &[u8]) -> (usize, usize) {
 fn decode_var_usize(buffer: &[u8]) -> Option<(usize, usize)> {
     if !buffer.is_empty() && buffer[0] <= 0x7F_u8 {
         // Shortcut the common case for low values.
-        return Some((buffer[0] as usize, 1))
+        return Some((buffer[0] as usize, 1));
     }
     let mut result: usize = 0;
     let mut i = 0;
@@ -268,142 +259,11 @@ fn decode_var_usize(buffer: &[u8]) -> Option<(usize, usize)> {
         let shifted = ((byte & 0x7F_u8) as usize).checked_shl((i * 7) as u32)?;
         result = result.checked_add(shifted)?;
         if (byte & 0x80) == 0 {
-            break
+            break;
         }
         i += 1;
     }
     Some((result, i + 1))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        decode_var_usize,
-        encode_var_usize,
-    };
-    #[cfg(not(feature = "std"))]
-    use alloc::vec::Vec;
-
-    #[test]
-    fn encode_var_usize_1_byte_works() {
-        let mut buffer = Vec::new();
-        for i in 0..2usize.pow(7) {
-            buffer.clear();
-            assert_eq!(encode_var_usize(&mut buffer, i), 1);
-            assert_eq!(buffer, [i as u8]);
-            assert_eq!(decode_var_usize(&buffer), Some((i, 1)));
-        }
-    }
-
-    #[test]
-    fn encode_var_usize_2_bytes_works() {
-        let mut buffer = Vec::new();
-        for i in 2usize.pow(7)..2usize.pow(14) {
-            buffer.clear();
-            assert_eq!(encode_var_usize(&mut buffer, i), 2);
-            assert_eq!(buffer, [0x80 | ((i & 0x7F) as u8), (0x7F & (i >> 7) as u8)]);
-            assert_eq!(decode_var_usize(&buffer), Some((i, 2)));
-        }
-    }
-
-    #[test]
-    #[cfg_attr(any(miri, tarpaulin), ignore)]
-    fn encode_var_usize_3_bytes_works() {
-        let mut buffer = Vec::new();
-        for i in 2usize.pow(14)..2usize.pow(21) {
-            buffer.clear();
-            assert_eq!(encode_var_usize(&mut buffer, i), 3);
-            assert_eq!(
-                buffer,
-                [
-                    0x80 | ((i & 0x7F) as u8),
-                    0x80 | (0x7F & (i >> 7) as u8),
-                    (0x7F & (i >> 14) as u8),
-                ]
-            );
-            assert_eq!(decode_var_usize(&buffer), Some((i, 3)));
-        }
-    }
-
-    /// Allows to split up the test into multiple fragments that can run in parallel.
-    #[cfg_attr(any(miri, tarpaulin), ignore)]
-    fn assert_encode_var_usize_4_bytes(range: core::ops::Range<usize>) {
-        let mut buffer = Vec::new();
-        for i in range {
-            buffer.clear();
-            assert_eq!(encode_var_usize(&mut buffer, i), 4);
-            assert_eq!(
-                buffer,
-                [
-                    0x80 | ((i & 0x7F) as u8),
-                    0x80 | (0x7F & (i >> 7) as u8),
-                    0x80 | (0x7F & (i >> 14) as u8),
-                    (0x7F & (i >> 21) as u8),
-                ]
-            );
-            assert_eq!(decode_var_usize(&buffer), Some((i, 4)));
-        }
-    }
-
-    #[test]
-    #[cfg_attr(any(miri, tarpaulin), ignore)]
-    fn encode_var_usize_4_bytes_01_works() {
-        assert_encode_var_usize_4_bytes(2usize.pow(21)..2usize.pow(24));
-    }
-
-    #[test]
-    #[cfg_attr(any(miri, tarpaulin), ignore)]
-    fn encode_var_usize_4_bytes_02_works() {
-        assert_encode_var_usize_4_bytes(2usize.pow(24)..2usize.pow(26));
-    }
-
-    #[test]
-    #[cfg_attr(any(miri, tarpaulin), ignore)]
-    fn encode_var_usize_4_bytes_03_works() {
-        assert_encode_var_usize_4_bytes(2usize.pow(26)..2usize.pow(27));
-    }
-
-    #[test]
-    #[cfg_attr(any(miri, tarpaulin), ignore)]
-    fn encode_var_usize_4_bytes_04_works() {
-        assert_encode_var_usize_4_bytes(2usize.pow(27)..2usize.pow(28));
-    }
-
-    #[test]
-    fn encode_var_u32_max_works() {
-        let mut buffer = Vec::new();
-        let i = u32::MAX as usize;
-        assert_eq!(encode_var_usize(&mut buffer, i), 5);
-        assert_eq!(buffer, [0xFF, 0xFF, 0xFF, 0xFF, 0x0F]);
-        assert_eq!(decode_var_usize(&buffer), Some((i, 5)));
-    }
-
-    #[test]
-    fn encode_var_u64_max_works() {
-        let mut buffer = Vec::new();
-        let i = u64::MAX as usize;
-        assert_eq!(encode_var_usize(&mut buffer, i), 10);
-        assert_eq!(
-            buffer,
-            [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01]
-        );
-        assert_eq!(decode_var_usize(&buffer), Some((i, 10)));
-    }
-
-    #[test]
-    fn decode_var_fail() {
-        // Empty buffer.
-        assert_eq!(decode_var_usize(&[]), None);
-        // Missing buffer bytes.
-        assert_eq!(decode_var_usize(&[0x80]), None);
-        // Out of range encoded value.
-        // assert_eq!(
-        //     decode_var_usize(&[
-        //         0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x03
-        //     ]),
-        //     None,
-        // );
-    }
 }
 
 impl<'a, S> IntoIterator for &'a BufferBackend<S>
@@ -461,11 +321,139 @@ where
     }
 }
 
-impl<'a, S> ExactSizeIterator for Iter<'a, S>
+impl<S> ExactSizeIterator for Iter<'_, S>
 where
     S: Symbol,
 {
     fn len(&self) -> usize {
         self.backend.len_strings - self.yielded
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{decode_var_usize, encode_var_usize};
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
+
+    #[test]
+    fn encode_var_usize_1_byte_works() {
+        let mut buffer = Vec::new();
+        for i in 0..2usize.pow(7) {
+            buffer.clear();
+            assert_eq!(encode_var_usize(&mut buffer, i), 1);
+            assert_eq!(buffer, [i as u8]);
+            assert_eq!(decode_var_usize(&buffer), Some((i, 1)));
+        }
+    }
+
+    #[test]
+    fn encode_var_usize_2_bytes_works() {
+        let mut buffer = Vec::new();
+        for i in 2usize.pow(7)..2usize.pow(14) {
+            buffer.clear();
+            assert_eq!(encode_var_usize(&mut buffer, i), 2);
+            assert_eq!(buffer, [0x80 | ((i & 0x7F) as u8), (0x7F & (i >> 7) as u8)]);
+            assert_eq!(decode_var_usize(&buffer), Some((i, 2)));
+        }
+    }
+
+    #[test]
+    #[cfg_attr(any(miri), ignore)]
+    fn encode_var_usize_3_bytes_works() {
+        let mut buffer = Vec::new();
+        for i in 2usize.pow(14)..2usize.pow(21) {
+            buffer.clear();
+            assert_eq!(encode_var_usize(&mut buffer, i), 3);
+            assert_eq!(
+                buffer,
+                [
+                    0x80 | ((i & 0x7F) as u8),
+                    0x80 | (0x7F & (i >> 7) as u8),
+                    (0x7F & (i >> 14) as u8),
+                ]
+            );
+            assert_eq!(decode_var_usize(&buffer), Some((i, 3)));
+        }
+    }
+
+    /// Allows to split up the test into multiple fragments that can run in parallel.
+    #[cfg_attr(any(miri), ignore)]
+    fn assert_encode_var_usize_4_bytes(range: core::ops::Range<usize>) {
+        let mut buffer = Vec::new();
+        for i in range {
+            buffer.clear();
+            assert_eq!(encode_var_usize(&mut buffer, i), 4);
+            assert_eq!(
+                buffer,
+                [
+                    0x80 | ((i & 0x7F) as u8),
+                    0x80 | (0x7F & (i >> 7) as u8),
+                    0x80 | (0x7F & (i >> 14) as u8),
+                    (0x7F & (i >> 21) as u8),
+                ]
+            );
+            assert_eq!(decode_var_usize(&buffer), Some((i, 4)));
+        }
+    }
+
+    #[test]
+    #[cfg_attr(any(miri), ignore)]
+    fn encode_var_usize_4_bytes_01_works() {
+        assert_encode_var_usize_4_bytes(2usize.pow(21)..2usize.pow(24));
+    }
+
+    #[test]
+    #[cfg_attr(any(miri), ignore)]
+    fn encode_var_usize_4_bytes_02_works() {
+        assert_encode_var_usize_4_bytes(2usize.pow(24)..2usize.pow(26));
+    }
+
+    #[test]
+    #[cfg_attr(any(miri), ignore)]
+    fn encode_var_usize_4_bytes_03_works() {
+        assert_encode_var_usize_4_bytes(2usize.pow(26)..2usize.pow(27));
+    }
+
+    #[test]
+    #[cfg_attr(any(miri), ignore)]
+    fn encode_var_usize_4_bytes_04_works() {
+        assert_encode_var_usize_4_bytes(2usize.pow(27)..2usize.pow(28));
+    }
+
+    #[test]
+    fn encode_var_u32_max_works() {
+        let mut buffer = Vec::new();
+        let i = u32::MAX as usize;
+        assert_eq!(encode_var_usize(&mut buffer, i), 5);
+        assert_eq!(buffer, [0xFF, 0xFF, 0xFF, 0xFF, 0x0F]);
+        assert_eq!(decode_var_usize(&buffer), Some((i, 5)));
+    }
+
+    #[test]
+    fn encode_var_u64_max_works() {
+        let mut buffer = Vec::new();
+        let i = u64::MAX as usize;
+        assert_eq!(encode_var_usize(&mut buffer, i), 10);
+        assert_eq!(
+            buffer,
+            [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01]
+        );
+        assert_eq!(decode_var_usize(&buffer), Some((i, 10)));
+    }
+
+    #[test]
+    fn decode_var_fail() {
+        // Empty buffer.
+        assert_eq!(decode_var_usize(&[]), None);
+        // Missing buffer bytes.
+        assert_eq!(decode_var_usize(&[0x80]), None);
+        // Out of range encoded value.
+        // assert_eq!(
+        //     decode_var_usize(&[
+        //         0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x03
+        //     ]),
+        //     None,
+        // );
     }
 }
